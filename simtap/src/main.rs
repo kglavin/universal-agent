@@ -1,16 +1,21 @@
 
 
 
+mod types;
+mod netif;
+mod flowmap;
+mod dnsresolv;
+
+use types::{ FiveTuple, Connection};
+
 use std::collections::{HashMap,};
+
 use std::net::Ipv4Addr;
 use std::net::UdpSocket;
 
-#[derive(Clone, Copy, Debug, Hash, Eq, PartialEq)]
-struct FiveTuple {
-    src: (Ipv4Addr, u16),
-    dst: (Ipv4Addr, u16),
-    protocol: u8,
-}
+
+
+
 
 #[derive(Default)]
 struct ConnectionManager {
@@ -18,13 +23,6 @@ struct ConnectionManager {
 }
 
 
-#[derive(Debug)]
-struct Connection {
-    id: u32,
-    nat_addr: (Ipv4Addr,Ipv4Addr),
-    nat_port: (u16, u16),
-
-}
 
 
 fn process_tcp(cm: &mut ConnectionManager, recv_buf: &[u8], len: usize, send_buf: &mut[u8]) -> usize { 
