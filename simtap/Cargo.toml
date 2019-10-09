@@ -1,0 +1,17 @@
+[package]
+name = "simtap"
+version = "0.1.0"
+authors = ["kglavin <kglavin@gmail.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+mac_utun = "0.6"
+etherparse = "0.8"
+bitflags = "1.0"
+nix = "0.13"
+
+
+[[bin]]
+name = "simtap"

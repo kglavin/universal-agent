@@ -1,0 +1,19 @@
+Todo.txt
+
+
+
+
+measure tcp packet trees for purposes of EUE
+what processes are using networking
+characterise the users, is it normal,  time, location, workload
+Ask the user to authenticate and verify that this is valid activity. 
+
+subscription bus for plugins to get acess to events etc. 
+tcp termination within tun. 
+small sport inside a wasm instance? 
+keystone agent inside wasm
+NPM inside wasm
+cloud tether, diverse path, fec etc 
+packet racing with two NATS ( end to end?)
+
+
