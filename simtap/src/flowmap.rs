@@ -1,19 +1,17 @@
 
 // LRU Based map of 5 tuple flow to natting, statistics, state etc. 
 use std::option::Option;
-use std::net::Ipv4Addr;
-
 use crate::types::{FiveTuple, Connection};
 
-const CACHESIZE:usize = 500;
- 
+const CACHESIZE:usize = 512;
+
 pub struct FlowMap {
 	id: u32,
 	cache: lru::LruCache<FiveTuple, Connection>,
 }
 
-
-impl FlowMap { 
+impl FlowMap {
+	#[allow(dead_code)]
 	pub fn new() -> Self { 
 		FlowMap { id: 123, cache: lru::LruCache::new(CACHESIZE) }
 	}
@@ -28,23 +26,35 @@ impl FlowMap {
 		self.cache.get(&flow)
 	}
 
+	#[allow(dead_code)]
 	pub fn get_id(&mut self) -> u32 { 
 		self.id
 	}
 
+	#[allow(dead_code)]
 	pub fn is_empty(&mut self) -> bool { 
 		self.cache.is_empty()
 	}
 
+	#[allow(dead_code)]
 	pub fn len(&mut self) -> usize { 
 		self.cache.len()
 	}
 
+	#[allow(dead_code)]
 	pub fn clear(&mut self) { 
 		self.cache.clear()
 	}
-
 }
+
+impl Default for FlowMap { 
+    fn default() -> Self { 
+        FlowMap { id: 0, 
+        	cache: lru::LruCache::new(CACHESIZE),
+        }
+    }
+}
+
 
 #[cfg(test)]
 mod tests {
@@ -59,6 +69,7 @@ mod tests {
 
 #[test]
     fn test_add_1() {
+    	use std::net::Ipv4Addr;
     	let mut fm = FlowMap::new();
     	let mut c = Connection::new();
     	let ft1 =  crate::types::FiveTuple {

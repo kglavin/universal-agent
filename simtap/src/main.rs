@@ -1,32 +1,22 @@
 
 
-
 mod types;
 mod netif;
 mod flowmap;
 mod dnsresolv;
 
-use types::{ FiveTuple, Connection};
-
-use std::collections::{HashMap,};
+use types::{FiveTuple, Connection};
 
 use std::net::Ipv4Addr;
 use std::net::UdpSocket;
 
-
-
-
-
 #[derive(Default)]
 struct ConnectionManager {
-    connections: HashMap<FiveTuple, Connection>,
+    connections: flowmap::FlowMap,
 }
 
 
-
-
 fn process_tcp(cm: &mut ConnectionManager, recv_buf: &[u8], len: usize, send_buf: &mut[u8]) -> usize { 
-	use std::collections::hash_map::Entry;
 
 	let _srv_dst = [172,217,0,36];
 	let local_tun_addr = Ipv4Addr::new(192,168,166,1);
@@ -76,17 +66,12 @@ fn process_tcp(cm: &mut ConnectionManager, recv_buf: &[u8], len: usize, send_buf
 		//                        (o_dst_addr: o_s_port-> n_dst_addr: o_d_port) 
 
 		// lookup map to find an existing connection
-	    match cm.connections.entry(query) {
-	        Entry::Occupied(entry) => {
-	            //eprintln!("got packet for known entry: {:?} query: {:?}, setting up nat", entry, query);
-	            
-	            // found map entry, get nat entries that need to be used. 
-	            nat_addr_entry = entry.get().nat_addr;
-	            nat_port_entry = entry.get().nat_port;
-	        }
-	        Entry::Vacant(entry) => {
-	            //eprintln!("got packet for unknown entry:\n {:?} \n inserting forward map entry: \n{:?}", entry, query);
-	            
+		match cm.connections.get(query) { 
+			Some(con) => {
+				nat_addr_entry = con.nat_addr;
+	            nat_port_entry = con.nat_port;
+			},
+			None => { 
 	            // did not find map entry, create one and set nat entries that need to be used. 
 				// should we create the reverse map also?
 				let c = Connection { 
@@ -97,35 +82,23 @@ fn process_tcp(cm: &mut ConnectionManager, recv_buf: &[u8], len: usize, send_buf
 				// setup values that were inserted into the map as they will be used for this packet. 
 				nat_addr_entry = c.nat_addr;
 	            nat_port_entry = c.nat_port;
+	            cm.connections.put(query,c);
 
-				//eprintln!("Connection inserted:\n {:?}",c);
-				entry.insert(c);
-
-
-				// also add the reverse of tuple
-
-				let r_query = FiveTuple {
+	            let r_query = FiveTuple {
        				src: (server_dst_addr, tcph.destination_port()),
        				dst: (server_virt_addr, tcph.source_port()),
        				protocol: iph.protocol(),
     			};
-				match cm.connections.entry(r_query) {
-					Entry::Occupied(entry) => {
-		                eprintln!("got packet for entry: {:?}. query: {:?}\n not extected to exist", entry, r_query);
-		            }
-		            Entry::Vacant(entry) => {
-		                //eprintln!("correct vacant entry for reverse, adding reverse map entry {:?}", r_query);
-						let c = Connection { 
+    			let c = Connection { 
 							id: 1,
 							nat_addr: (iph.destination_addr(),iph.source_addr()),
 							nat_port: (tcph.destination_port(),tcph.source_port()),
 						};
-						//eprintln!("Reverse Connection inserted:\n {:?}",c);
-						entry.insert(c);
-					}
-				}
-	        }
-	    }
+
+				cm.connections.put(r_query,c);
+
+			},
+		}
 
 	    ip.source = nat_addr_entry.0.octets();
 		ip.source = ip.destination;
@@ -171,22 +144,17 @@ fn process_tcp(cm: &mut ConnectionManager, recv_buf: &[u8], len: usize, send_buf
 			// to get it going to the right place (assuming that there is no inbound connections!!) 
 
 			// lookup map to find an existing connection, this will be one of the reverse query entries that was added earlier
-			match cm.connections.entry(query) {
-		        Entry::Occupied(entry) => {
-		            //eprintln!("got packet for known entry: {:?} query: {:?}, geting nat parms -- inbound", entry, query);
-		            
-		            // found map entry, get nat entries that need to be used. 
-		            nat_addr_entry = entry.get().nat_addr;
-		            nat_port_entry = entry.get().nat_port;
-		        }
-		        Entry::Vacant(entry) => {
-		            eprintln!("got packet for unknown entry: {:?}, should not happen in this case {:?}", entry, query);
-		            // did not find map entry, create one and set nat entries that need to be used. 
-					// should we create the reverse map also?
 
-					//will send a 127.0.0.1 to 127.0.0.1 at moment
-		        }
-		    }
+		match cm.connections.get(query) { 
+			Some(con) => {
+				nat_addr_entry = con.nat_addr;
+	            nat_port_entry = con.nat_port;
+			},
+			None => { 
+	            eprintln!("got packet for unknown connection, should not happen in this case {:?}", query);
+			},
+		}
+
 		// This is the inboound nat translation, 
 		// 172.1.2.4:443 ->  192.168.166.2:5667 -> 192.168.166.1: 5567
 		// matching key ( ((172.1.2.4,443), (192.168.166.2,5567))

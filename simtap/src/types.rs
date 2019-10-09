@@ -1,8 +1,5 @@
 
-// types in use
-
 use std::net::Ipv4Addr;
-
 
 #[derive(Clone, Copy, Debug, Hash, Eq, PartialEq)]
 pub struct FiveTuple {
@@ -11,6 +8,15 @@ pub struct FiveTuple {
     pub protocol: u8,
 }
 
+impl Default for FiveTuple {
+    fn default() -> Self { 
+        FiveTuple { 
+            src: (Ipv4Addr::new(0,0,0,0), 0),
+            dst: (Ipv4Addr::new(0,0,0,0), 0),
+            protocol: 0,
+        } 
+    }
+}
 
 
 #[derive(Clone, Copy, Debug, Hash, Eq, PartialEq)]
@@ -21,8 +27,17 @@ pub struct Connection {
 
 }
 
-impl Connection { 
+impl Default for Connection { 
+    fn default() -> Self { 
+        Connection { id: 0, 
+                    nat_addr: (Ipv4Addr::new(127,0,0,1),Ipv4Addr::new(127,0,0,1)),
+                    nat_port: (0,0),
+        }
+    }
+}
 
+impl Connection { 
+    #[allow(dead_code)]
 	pub fn new() -> Self { 
 		Connection { id: 0, 
 					nat_addr: (Ipv4Addr::new(127,0,0,1),Ipv4Addr::new(127,0,0,1)),
