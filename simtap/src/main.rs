@@ -8,7 +8,6 @@ mod dnsresolv;
 use types::{FiveTuple, Connection};
 
 use std::net::Ipv4Addr;
-use std::net::UdpSocket;
 
 #[derive(Default)]
 struct ConnectionManager {
@@ -227,27 +226,26 @@ fn process_icmp(_cm: &mut ConnectionManager, recv_buf: &[u8], _len: usize, _send
 	0
 }
 
-
-fn recv_buffer(fd: &UdpSocket, mut recv_buf: &mut[u8]) -> usize { 
+fn recv_buffer(interface: & netif::Interface<netif::MacosInterface>, mut recv_buf: &mut[u8]) -> usize { 
 	let mut len: usize = 0;
-	match fd.recv(&mut recv_buf) {
+	match interface.recv(&mut recv_buf) {
 				Ok(n) => { len = n;
 							//println!("received on {:?}: {} bytes", fd, n);
 							//println!("{:?}", &recv_buf[..64]);
 						  },
-				Err(e) => eprintln!("recv function failed on {:?}: {:?}", fd, e),
+				Err(e) => eprintln!("recv function failed on {}: {:?}", interface.name(), e),
 			}
 	len
 }
 
-fn send_buffer(fd: &UdpSocket, send_buf: &mut[u8], len: usize) { 
-	match fd.send(&mut send_buf[..len]) { 
+fn send_buffer(interface: &netif::Interface<netif::MacosInterface>, send_buf: &mut[u8], len: usize) { 
+	match interface.send(&mut send_buf[..len]) { 
 		Ok(_n_sent) => { 
 			//println!("wrote {} bytes", _n_sent) 
 			let iph = etherparse::Ipv4HeaderSlice::from_slice(&send_buf[4..len]).expect("could not parse tx ip header");
 			println!("-> : \tsrc: {} dst: {} len: {} proto: {} ",iph.source_addr(),iph.destination_addr(),len,iph.protocol());
 		},
-		Err(e) => println!("send function failed on {:?}: {:?}", fd,e),
+		Err(e) => println!("send function failed on {}: {:?}", interface.name(),e),
 		}
 }
 
@@ -255,7 +253,9 @@ fn send_buffer(fd: &UdpSocket, send_buf: &mut[u8], len: usize) {
 fn main() {
 
 	//let srv_dst = [10,33,116,118];
- 	let (fd, _if_name) = mac_utun::get_utun().expect("Error, did not get a untun returned"); 
+	let tun = mac_utun::get_utun().expect("Error, did not get a untun returned"); 
+	let interface = netif::Interface::new(netif::MacosInterface::new(tun)); 
+
  	let mut cm = ConnectionManager::default();
 
 	loop {
@@ -266,7 +266,7 @@ fn main() {
 	    let utunheader:[u8; 4] = [0,0,0,2];
 		let utun_header_len = utunheader.len();
 
-		len = recv_buffer(&fd,&mut buf);
+		len = recv_buffer(&interface,&mut buf);
 		
 		// assuming this is ipv4 for the moment
 		let iph = etherparse::Ipv4HeaderSlice::from_slice(&buf[utun_header_len..len]).expect("could not parse rx ip header");
@@ -276,17 +276,17 @@ fn main() {
 		match iph.protocol() { 
 			0x01 => {
 				let outbuf_len = process_icmp(&mut cm, &buf, len, &mut out);
-				send_buffer(&fd,&mut out,outbuf_len);	
+				send_buffer(&interface,&mut out,outbuf_len);	
 			},
 			
 			0x06 => { 
 				let outbuf_len = process_tcp(&mut cm, &buf, len, &mut out);
-				send_buffer(&fd,&mut out,outbuf_len);	
+				send_buffer(&interface,&mut out,outbuf_len);	
 			},
 
 			17 => { 
 				let outbuf_len = process_udp(&mut cm, &buf, len, &mut out);
-				send_buffer(&fd,&mut out,outbuf_len);
+				send_buffer(&interface,&mut out,outbuf_len);
 			},
 
 			41 => println!("ipv6"),
