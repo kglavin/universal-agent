@@ -8,23 +8,31 @@ use tun_tap;
 
 
 #[cfg(target_os = "macos")]
-//struct MacosInterface<UdpSocket, String> {
-struct MacosInterface {  
+#[derive(Debug)]
+pub struct MacosInterface {  
 	fd: UdpSocket,
 	if_name: String,
 }
 
 #[cfg(target_os = "macos")]
 impl MacosInterface { 
-	fn send(&self, buf: &[u8]) -> std::io::Result<usize> { 
+
+	pub fn new(intf:(UdpSocket, String)) -> MacosInterface { 
+		MacosInterface {
+			fd: intf.0,
+			if_name: intf.1,
+		}
+	}
+
+	pub fn send(&self, buf: &[u8]) -> std::io::Result<usize> { 
 		self.fd.send(buf)
 	}
 
-	fn recv(&self, mut buf: &mut [u8]) -> std::io::Result<usize> { 
+	pub fn recv(&self, mut buf: &mut [u8]) -> std::io::Result<usize> { 
 		self.fd.recv(&mut buf)
 	}
 
-	fn name(&self) -> &str { 
+	pub fn name(&self) -> &str { 
 		&self.if_name
 	}
 }
@@ -35,48 +43,61 @@ struct LinuxInterface {
 }
 
 #[cfg(target_os = "linux")]
-impl LinuxInterface { 
-	fn send(&self, buf: &[u8]) -> Result<usize> { 
+pub impl LinuxInterface { 
+	pub fn new(intf:tun_tap::Iface) -> LinuxInterface { 
+		LinuxInterface {
+			netif: intf,
+		}
+	}
+	pub fn send(&self, buf: &[u8]) -> std::io::Result<usize> { 
 		self.netif.send(buf)
 	}
-	fn recv(&self, buf: &mut[u8]) -> Result<usize> { 
+	pub fn recv(&self, buf: &mut[u8]) -> std::io::Result<usize> { 
 		self.netif.recv(&mut buf)
 	}
-		fn name(&self) -> &str { 
+	pub fn name(&self) -> &str { 
 			self.netif.name()
 	}
 
 }
 
+#[cfg(target_os = "macos")]
+#[derive(Debug)]
+pub struct Interface<MacosInterface> {
+	nic: MacosInterface,
+}
 
-//#[cfg(target_os = "macoss")]
-//impl <MacosInterface> Interface<MacosInterface> {
-//    pub fn new(nic: MacosInterface) -> Self {
-//		Interface { 
-//			nic: nic,
-//			}
-//		}
-//    }
-//#[cfg(target_os = "linux")]
-//impl <LinuxInterface> Interface<LinuxInterface> {
-//    pub fn new(nic: LinuxInterface) -> Self {
-//		Interface { 
-//			nic: nic,
-//			}
-//		}
-//    }
+#[cfg(target_os = "macos")]
+impl Interface<MacosInterface> {
 
-impl <T> Interface<T> {
-    pub fn new(nic: T) -> Self {
+	pub fn new(nic: MacosInterface) -> Self {
 		Interface { 
 			nic: nic,
 			}
 		}
-    }
 
-pub struct Interface<T> {
-	nic: T,
+	pub fn send(&self, buf: &[u8]) -> std::io::Result<usize> { 
+		self.nic.send(buf)
+	}
+
+	pub fn recv(&self, mut buf: & mut[u8]) -> std::io::Result<usize> { 
+		self.nic.recv(&mut buf)
+	}
+	pub fn name(&self) -> &str { 
+			self.nic.name()
+	}
+
+   }
+
+
+#[cfg(target_os = "linux")]
+pub struct Interface<LinuxInterface> {
+	nic: LinuxInterface,
 }
+
+
+
+
 
 
 #[cfg(test)]
