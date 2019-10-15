@@ -1,3 +1,3 @@
-// Provide dsn resolution, interception and caching services
+// Provide dns resolution, interception and caching services
 
 
