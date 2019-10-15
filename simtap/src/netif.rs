@@ -64,9 +64,6 @@ impl Interface {
 
 }
 
-
-
-
 #[cfg(target_os = "macos")]
 impl NetworkInterface for MacosInterface { 
 	fn send(&self, buf: &[u8]) -> std::io::Result<usize> { 
@@ -79,9 +76,6 @@ impl NetworkInterface for MacosInterface {
 		&self.name
 	}
 }
-
-
-
 
 #[cfg(target_os = "linux")]
 impl NetworkInterface for LinuxInterface { 
