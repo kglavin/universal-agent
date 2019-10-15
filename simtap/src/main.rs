@@ -6,7 +6,6 @@ mod flowmap;
 mod dnsresolv;
 
 use types::{FiveTuple, Connection};
-
 use std::net::Ipv4Addr;
 
 #[derive(Default)]
@@ -226,7 +225,7 @@ fn process_icmp(_cm: &mut ConnectionManager, recv_buf: &[u8], _len: usize, _send
 	0
 }
 
-fn recv_buffer(interface: & netif::Interface<netif::MacosInterface>, mut recv_buf: &mut[u8]) -> usize { 
+fn recv_buffer(interface: &netif::Interface, mut recv_buf: &mut[u8]) -> usize { 
 	let mut len: usize = 0;
 	match interface.recv(&mut recv_buf) {
 				Ok(n) => { len = n;
@@ -238,8 +237,8 @@ fn recv_buffer(interface: & netif::Interface<netif::MacosInterface>, mut recv_bu
 	len
 }
 
-fn send_buffer(interface: &netif::Interface<netif::MacosInterface>, send_buf: &mut[u8], len: usize) { 
-	match interface.send(&mut send_buf[..len]) { 
+fn send_buffer(interface: &netif::Interface, send_buf: &[u8], len: usize) { 
+	match interface.send(&send_buf[..len]) { 
 		Ok(_n_sent) => { 
 			//println!("wrote {} bytes", _n_sent) 
 			let iph = etherparse::Ipv4HeaderSlice::from_slice(&send_buf[4..len]).expect("could not parse tx ip header");
@@ -253,8 +252,7 @@ fn send_buffer(interface: &netif::Interface<netif::MacosInterface>, send_buf: &m
 fn main() {
 
 	//let srv_dst = [10,33,116,118];
-	let tun = mac_utun::get_utun().expect("Error, did not get a untun returned"); 
-	let interface = netif::Interface::new(netif::MacosInterface::new(tun)); 
+	let interface = netif::Interface::new(mac_utun::get_utun().expect("Error, did not get a untun returned")); 
 
  	let mut cm = ConnectionManager::default();
 
