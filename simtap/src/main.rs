@@ -303,7 +303,7 @@ fn main() {
 	#[cfg(target_os = "macos")]
 	let interface = netif::Interface::new(mac_utun::get_utun().expect("Error, did not get a untun returned")); 
 	#[cfg(target_os = "linux")]
-	let interface = netif::Interface::new(tun_tap::Iface::without_packet_info(_name, tun_tap::Mode::Tun)?);
+	let interface = netif::Interface::new(tun_tap::Iface::without_packet_info(_name, tun_tap::Mode::Tun).unwrap());
 
  	let mut cm = ConnectionManager::default();
 
