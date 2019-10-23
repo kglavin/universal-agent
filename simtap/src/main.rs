@@ -2,6 +2,7 @@
 mod types;
 mod netif;
 mod flowmap;
+mod nat;
 mod dnsresolv;
 
 use crate::types::{FiveTuple, Connection};
@@ -13,6 +14,9 @@ use hermes::dns::protocol::{QueryType,ResultCode};
 #[derive(Default)]
 struct ConnectionManager {
     connections: flowmap::FlowMap,
+    nat_map: nat::NatMap,
+   	host_cache: DNSCache,
+	wan_cache: DNSCache
 }
 
 
@@ -22,9 +26,9 @@ fn process_tcp(cm: &mut ConnectionManager, recv_buf: &[u8], len: usize, send_buf
 	let local_tun_addr = Ipv4Addr::new(192,168,166,1);
 	let local_tun_network = Ipv4Addr::new(192,168,166,0);
 	let local_tun_network_size = 24; // /24 netmask
-	let server_virt_addr = Ipv4Addr::new(192,168,166,2);
+	let server_virt_addr : Ipv4Addr;
 	//let server_dst_addr = Ipv4Addr::new(172,217,0,36);
-	let server_dst_addr = Ipv4Addr::new(10,0,64,11);
+	let mut server_dst_addr =  Ipv4Addr::new(0,0,0,0);
 
 	let utunheader:[u8; 4] = [0,0,0,2];
 	let utun_header_len = utunheader.len();
@@ -72,6 +76,15 @@ fn process_tcp(cm: &mut ConnectionManager, recv_buf: &[u8], len: usize, send_buf
 	            nat_port_entry = con.nat_port;
 			},
 			None => { 
+				server_virt_addr = iph.destination_addr();
+
+				match cm.nat_map.get(server_virt_addr) { 
+                	Some(d_ip) => {
+	                    server_dst_addr = *d_ip;
+                	},
+                	None => { assert!(false, "failed to get nat mapping for {} ", server_virt_addr.to_string());},
+        		}
+
 	            // did not find map entry, create one and set nat entries that need to be used. 
 				// should we create the reverse map also?
 				let c = Connection { 
@@ -253,21 +266,31 @@ fn send_buffer(interface: &netif::Interface, send_buf: &[u8], len: usize) {
 
 fn main() {
 
+	let mut cm = ConnectionManager::default();
+
 	//use hermes::dns::protocol::{DnsRecord, QueryType, ResultCode, TransientTtl};
 	// host_dns cache holds the ip of locally natted app targets
-	let mut host_cache = DNSCache::new();
-	// wan dns cache holds the ip as resolved correctly
-	let mut wan_cache = DNSCache::new();
 
-	dnsresolv::initialize_caches(&mut host_cache, &mut wan_cache);
 
-	if let Some(packet) = host_cache.lookup("google.com", QueryType::A) { 
+	dnsresolv::initialize_caches(&mut cm.host_cache, &mut cm.wan_cache,&mut cm.nat_map);
+
+	if let Some(packet) = cm.host_cache.lookup("google.com", QueryType::A) { 
 		assert_eq!(ResultCode::NOERROR, packet.header.rescode);
 	}
 
-	if let Some(packet) = wan_cache.lookup("google.com", QueryType::A) { 
+	if let Some(packet) = cm.wan_cache.lookup("google.com", QueryType::A) { 
 		assert_eq!(ResultCode::NOERROR, packet.header.rescode);
 	}
+
+	let ip_a =  Ipv4Addr::new(192,168,166,3);
+    match cm.nat_map.get(ip_a) { 
+        Some(ip) => {
+            println!("nat_map - A: {}, ip_b: {} ", ip_a.to_string(), ip.to_string());
+        },
+        None => { assert!(false, "failed to get nat mapping ip_a->ip_b for {} ", ip_a.to_string());},
+	} 
+
+
 
 
 	//let srv_dst = [10,33,116,118];
@@ -277,7 +300,7 @@ fn main() {
 	#[cfg(target_os = "linux")]
 	let interface = netif::Interface::new(tun_tap::Iface::without_packet_info(_name, tun_tap::Mode::Tun).unwrap());
 
- 	let mut cm = ConnectionManager::default();
+ 	
 
 	loop {
 	

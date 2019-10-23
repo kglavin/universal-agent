@@ -7,6 +7,8 @@
 use hermes::dns::client::DnsClient; 
 use hermes::dns::protocol::{DnsPacket, DnsRecord, QueryType, ResultCode,TransientTtl};
 use hermes::dns::cache::Cache;
+use crate::nat::NatMap;
+use std::net::Ipv4Addr;
 
 
 pub struct DNSCache { 
@@ -35,16 +37,29 @@ impl DNSCache {
 
 }
 
- pub fn initialize_caches( host_cache: &mut DNSCache,  wan_cache: &mut DNSCache) { 
+impl Default for DNSCache { 
+    fn default() -> Self { 
+        DNSCache {
+            cache: Cache::new(),
+        }
+    }
+}
+
+
+ pub fn initialize_caches( host_cache: &mut DNSCache,  wan_cache: &mut DNSCache, nat_map: & mut NatMap) { 
     let mut rdr = csv::Reader::from_path("/Users/kglavin/Documents/GitHub/universal-agent/simtap/domains.csv").unwrap();
     let mut dns_records = Vec::new();
     let mut wan_records = Vec::new();
      
+    let mut ip_a: Ipv4Addr; 
+    let mut ip_b: Ipv4Addr;
+
     use hermes::dns::client::{DnsNetworkClient};
     let client = DnsNetworkClient::new(31999);
     client.run().unwrap();
     for result in rdr.records() {
         let record = result.unwrap();
+        ip_a = record[1].parse().unwrap();
         dns_records.push(DnsRecord::A {
             domain: record[0].to_string(),
             addr: record[1].parse().unwrap(),
@@ -60,15 +75,32 @@ impl DNSCache {
         match res.answers[0] {
             DnsRecord::A { ref domain, addr, .. } => {
                 println!("wan - name: {}, ip: {} ", domain.to_string(), addr.to_string());
+                ip_b = addr;
                 wan_records.push(DnsRecord::A {
                     domain: domain.to_string(),
                     addr: addr,
                     ttl: TransientTtl(3600),
-                });                
+                });                            
             }
             _ => panic!(),
         }
-    }   
+        nat_map.put(ip_a,ip_b);
+        nat_map.put(ip_b,ip_a);
+
+        match nat_map.get(ip_a) { 
+                Some(ip) => {
+                    println!("nat_map - A: {}, ip_b: {} ", ip_a.to_string(), ip.to_string());
+                },
+                None => { assert!(false, "failed to get nat mapping ip_a->ip_b for {} ", ip_a.to_string());},
+        } 
+
+        match nat_map.get(ip_b) { 
+                Some(ip) => {
+                    println!("nat_map - B: {}, ip_a: {} ", ip_b.to_string(), ip.to_string());
+                },
+                None => { assert!(false, "failed to get nat mapping ip_b->ip_a for {} ", ip_b.to_string());},
+        } 
+    }
     host_cache.store(&dns_records);
     wan_cache.store(&wan_records);
 
