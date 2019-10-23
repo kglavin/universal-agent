@@ -274,23 +274,21 @@ fn main() {
 
 	dnsresolv::initialize_caches(&mut cm.host_cache, &mut cm.wan_cache,&mut cm.nat_map);
 
-	if let Some(packet) = cm.host_cache.lookup("google.com", QueryType::A) { 
-		assert_eq!(ResultCode::NOERROR, packet.header.rescode);
-	}
+	//if let Some(packet) = cm.host_cache.lookup("google.com", QueryType::A) { 
+	//	assert_eq!(ResultCode::NOERROR, packet.header.rescode);
+	//}
 
-	if let Some(packet) = cm.wan_cache.lookup("google.com", QueryType::A) { 
-		assert_eq!(ResultCode::NOERROR, packet.header.rescode);
-	}
+	//if let Some(packet) = cm.wan_cache.lookup("google.com", QueryType::A) { 
+	//	assert_eq!(ResultCode::NOERROR, packet.header.rescode);
+	//}
 
-	let ip_a =  Ipv4Addr::new(192,168,166,3);
-    match cm.nat_map.get(ip_a) { 
-        Some(ip) => {
-            println!("nat_map - A: {}, ip_b: {} ", ip_a.to_string(), ip.to_string());
-        },
-        None => { assert!(false, "failed to get nat mapping ip_a->ip_b for {} ", ip_a.to_string());},
-	} 
-
-
+	//let ip_a =  Ipv4Addr::new(192,168,166,3);
+    //match cm.nat_map.get(ip_a) { 
+    //    Some(ip) => {
+    //        println!("nat_map - A: {}, ip_b: {} ", ip_a.to_string(), ip.to_string());
+    //    },
+    //    None => { println!( "failed to get nat mapping ip_a->ip_b for {} ", ip_a.to_string());},
+	//} 
 
 
 	//let srv_dst = [10,33,116,118];
