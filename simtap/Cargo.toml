@@ -15,6 +15,7 @@ bitflags = "1.0"
 nix = "0.13"
 lru = "0.3.1"
 hermes = { path = "../hermes" }
+csv = "1.1.1"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 mac_utun = "0.6"

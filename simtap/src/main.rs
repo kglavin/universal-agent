@@ -4,10 +4,11 @@ mod netif;
 mod flowmap;
 mod dnsresolv;
 
-use types::{FiveTuple, Connection};
+use crate::types::{FiveTuple, Connection};
 use std::net::Ipv4Addr;
-
 use dnsresolv::DNSCache;
+use hermes::dns::protocol::{QueryType,ResultCode};
+
 
 #[derive(Default)]
 struct ConnectionManager {
@@ -252,51 +253,22 @@ fn send_buffer(interface: &netif::Interface, send_buf: &[u8], len: usize) {
 
 fn main() {
 
-	use hermes::dns::protocol::{DnsRecord, QueryType, ResultCode, TransientTtl};
-	let mut dns_cache = DNSCache::new();
+	//use hermes::dns::protocol::{DnsRecord, QueryType, ResultCode, TransientTtl};
+	// host_dns cache holds the ip of locally natted app targets
+	let mut host_cache = DNSCache::new();
+	// wan dns cache holds the ip as resolved correctly
+	let mut wan_cache = DNSCache::new();
 
-	if dns_cache.lookup("www.google.com", QueryType::A).is_some() {
-		panic!()
-    }
+	dnsresolv::initialize_caches(&mut host_cache, &mut wan_cache);
 
-        // Register a negative cache entry
-    dns_cache.store_nxdomain("www.google.com", QueryType::A, 3600);
+	if let Some(packet) = host_cache.lookup("google.com", QueryType::A) { 
+		assert_eq!(ResultCode::NOERROR, packet.header.rescode);
+	}
 
-        // Verify that we get a response, with the NXDOMAIN flag set
-    if let Some(packet) = dns_cache.lookup("www.google.com", QueryType::A) {
-    	assert_eq!(ResultCode::NXDOMAIN, packet.header.rescode);
-    }
+	if let Some(packet) = wan_cache.lookup("google.com", QueryType::A) { 
+		assert_eq!(ResultCode::NOERROR, packet.header.rescode);
+	}
 
-        // Register a negative cache entry with no TTL
-    dns_cache.store_nxdomain("www.yahoo.com", QueryType::A, 0);
-
-        // And check that no such result is actually returned, since it's expired
-    if dns_cache.lookup("www.yahoo.com", QueryType::A).is_some() {
-    	panic!()
-    }
-
-	let mut records = Vec::new();
-	records.push(DnsRecord::A {
-            domain: "www.google.com".to_string(),
-            addr: "127.0.0.1".parse().unwrap(),
-            ttl: TransientTtl(3600),
-        });
-	records.push(DnsRecord::A {
-            domain: "www.yahoo.com".to_string(),
-            addr: "127.0.0.2".parse().unwrap(),
-            ttl: TransientTtl(0),
-        });
-	records.push(DnsRecord::CNAME {
-            domain: "www.microsoft.com".to_string(),
-            host: "www.somecdn.com".to_string(),
-            ttl: TransientTtl(3600),
-        });
-
-	dns_cache.store(&records);
-
-    if let Some(packet) = dns_cache.lookup("www.google.com", QueryType::A) {
-    	assert_eq!(ResultCode::NOERROR, packet.header.rescode);
-    }
 
 	//let srv_dst = [10,33,116,118];
 	let _name = "utun1";
