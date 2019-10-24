@@ -50,7 +50,7 @@ impl Default for DNSCache {
  #[cfg(target_os = "macos")]
     let mut rdr = csv::Reader::from_path("/Users/kglavin/Documents/GitHub/universal-agent/simtap/domains.csv").unwrap();
  #[cfg(target_os = "linux")]
-    let mut rdr = csv::Reader::from_path("/home/kglavin/github/universal-agent/simtap/domains.csv").unwrap();
+    let mut rdr = csv::Reader::from_path("./domains.csv").unwrap();
     let mut dns_records = Vec::new();
     let mut wan_records = Vec::new();
      
@@ -71,8 +71,14 @@ impl Default for DNSCache {
 
         println!("dns - name: {}, ip: {} ", &record[0], &record[1]);
 
+        
+ #[cfg(target_os = "macos")]
         let res = client
             .send_udp_query(&record[0].to_string(), QueryType::A, ("8.8.8.8", 53), true)
+            .unwrap();
+ #[cfg(target_os = "linux")]
+        let res = client
+            .send_udp_query(&record[0].to_string(), QueryType::A, ("44.1.13.1", 53), true)
             .unwrap();
 
         match res.answers[0] {
