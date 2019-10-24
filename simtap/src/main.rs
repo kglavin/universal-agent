@@ -74,6 +74,8 @@ fn process_tcp(cm: &mut ConnectionManager, recv_buf: &[u8], len: usize, send_buf
 			Some(con) => {
 				nat_addr_entry = con.nat_addr;
 	            nat_port_entry = con.nat_port;
+	            //server_virt_addr = nat_addr_entry.0;
+	            server_dst_addr = nat_addr_entry.1;
 			},
 			None => { 
 				server_virt_addr = iph.destination_addr();
@@ -113,7 +115,7 @@ fn process_tcp(cm: &mut ConnectionManager, recv_buf: &[u8], len: usize, send_buf
 			},
 		}
 
-	    ip.source = nat_addr_entry.0.octets();
+	    //ip.source = nat_addr_entry.0.octets();
 		ip.source = ip.destination;
 		tcp.source_port = nat_port_entry.0;
 		// no change to ip.source_port
@@ -121,6 +123,7 @@ fn process_tcp(cm: &mut ConnectionManager, recv_buf: &[u8], len: usize, send_buf
 		ip.destination = server_dst_addr.octets();
 		tcp.destination_port = nat_port_entry.1;
 		// no change to ip.destination_port
+
 	} else { 
 		let sig_octets = local_tun_network_size/8;
 		//let mut local_network = [0u8,4]; 
@@ -314,8 +317,8 @@ fn main() {
 		// assuming this is ipv4 for the moment
 		//let iph = etherparse::Ipv4HeaderSlice::from_slice(&buf[utun_header_len..len]).expect("could not parse rx ip header");
         
-                match etherparse::Ipv4HeaderSlice::from_slice(&buf[utun_header_len..len]) {
-            	    Ok(iph) => {	
+        match etherparse::Ipv4HeaderSlice::from_slice(&buf[utun_header_len..len]) {
+    	    Ok(iph) => {	
 		        println!("<- : \tsrc: {} dst: {} len: {} proto: {} ",iph.source_addr(),iph.destination_addr(),len,iph.protocol());
 		        match iph.protocol() { 
 			        0x01 => {
@@ -336,10 +339,10 @@ fn main() {
         			41 => println!("ipv6"),
         			_ => println!("unknown: {} ", iph.protocol()),
         	        }
-                    }
-                    Err(e) => {
-                        eprintln!("ignoring non ipv4  packet {:?}", e);
-                    }
-              }
+            }
+            Err(e) => {
+                eprintln!("ignoring non ipv4  packet {:?}", e);
+            }
+      	}
     }		
 }
