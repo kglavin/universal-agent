@@ -309,7 +309,7 @@ fn main() {
 	    let mut buf = [0u8; 2004];
 	    let mut out = [0u8; 2004];
 	    let len: usize;
-	    let utunheader:[u8; 4] = [0,0,0,2];
+	    let utunheader:[u8; 4] = [0,0,8,0];
 		let utun_header_len = utunheader.len();
 
 		len = recv_buffer(&interface,&mut buf);
