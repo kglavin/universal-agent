@@ -30,7 +30,7 @@ fn process_tcp(cm: &mut ConnectionManager, recv_buf: &[u8], len: usize, send_buf
 	//let server_dst_addr = Ipv4Addr::new(172,217,0,36);
 	let mut server_dst_addr =  Ipv4Addr::new(0,0,0,0);
 
-	let utunheader:[u8; 4] = [0,0,0,2];
+	let utunheader:[u8; 4] = [0,0,8,0];
 	let utun_header_len = utunheader.len();
 
 	let iph = etherparse::Ipv4HeaderSlice::from_slice(&recv_buf[utun_header_len..len]).expect("could not parse rx ip header");
