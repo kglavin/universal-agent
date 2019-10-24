@@ -296,7 +296,8 @@ fn main() {
 	#[cfg(target_os = "macos")]
 	let interface = netif::Interface::new(mac_utun::get_utun().expect("Error, did not get a untun returned")); 
 	#[cfg(target_os = "linux")]
-	let interface = netif::Interface::new(tun_tap::Iface::without_packet_info(_name, tun_tap::Mode::Tun).unwrap());
+	let interface = netif::Interface::new(tun_tap::Iface::new(_name, tun_tap::Mode::Tun).unwrap());
+	//let interface = netif::Interface::new(tun_tap::Iface::without_packet_info(_name, tun_tap::Mode::Tun).unwrap());
 
  	
 
@@ -309,31 +310,36 @@ fn main() {
 		let utun_header_len = utunheader.len();
 
 		len = recv_buffer(&interface,&mut buf);
-		
+
 		// assuming this is ipv4 for the moment
-		let iph = etherparse::Ipv4HeaderSlice::from_slice(&buf[utun_header_len..len]).expect("could not parse rx ip header");
-		
-
-		println!("<- : \tsrc: {} dst: {} len: {} proto: {} ",iph.source_addr(),iph.destination_addr(),len,iph.protocol());
-		match iph.protocol() { 
-			0x01 => {
-				let outbuf_len = process_icmp(&mut cm, &buf, len, &mut out);
-				send_buffer(&interface,&mut out,outbuf_len);	
-			},
+		//let iph = etherparse::Ipv4HeaderSlice::from_slice(&buf[utun_header_len..len]).expect("could not parse rx ip header");
+        
+                match etherparse::Ipv4HeaderSlice::from_slice(&buf[utun_header_len..len]) {
+            	    Ok(iph) => {	
+		        println!("<- : \tsrc: {} dst: {} len: {} proto: {} ",iph.source_addr(),iph.destination_addr(),len,iph.protocol());
+		        match iph.protocol() { 
+			        0x01 => {
+			        	let outbuf_len = process_icmp(&mut cm, &buf, len, &mut out);
+			        	send_buffer(&interface,&mut out,outbuf_len);	
+			        },
 			
-			0x06 => { 
-				let outbuf_len = process_tcp(&mut cm, &buf, len, &mut out);
-				send_buffer(&interface,&mut out,outbuf_len);	
-			},
+			        0x06 => { 
+			        	let outbuf_len = process_tcp(&mut cm, &buf, len, &mut out);
+			        	send_buffer(&interface,&mut out,outbuf_len);	
+			        },
 
-			17 => { 
-				let outbuf_len = process_udp(&mut cm, &buf, len, &mut out);
-				send_buffer(&interface,&mut out,outbuf_len);
-			},
-
-			41 => println!("ipv6"),
-			_ => println!("unknown: {} ", iph.protocol()),
-	    }
-
+			        17 => { 
+			        	let outbuf_len = process_udp(&mut cm, &buf, len, &mut out);
+			        	send_buffer(&interface,&mut out,outbuf_len);
+			        },
+        
+        			41 => println!("ipv6"),
+        			_ => println!("unknown: {} ", iph.protocol()),
+        	        }
+                    }
+                    Err(e) => {
+                        eprintln!("ignoring non ipv4  packet {:?}", e);
+                    }
+              }
     }		
 }

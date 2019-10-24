@@ -47,7 +47,10 @@ impl Default for DNSCache {
 
 
  pub fn initialize_caches( host_cache: &mut DNSCache,  wan_cache: &mut DNSCache, nat_map: & mut NatMap) { 
+ #[cfg(target_os = "macos")]
     let mut rdr = csv::Reader::from_path("/Users/kglavin/Documents/GitHub/universal-agent/simtap/domains.csv").unwrap();
+ #[cfg(target_os = "linux")]
+    let mut rdr = csv::Reader::from_path("/home/kglavin/github/universal-agent/simtap/domains.csv").unwrap();
     let mut dns_records = Vec::new();
     let mut wan_records = Vec::new();
      
