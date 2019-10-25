@@ -4,14 +4,12 @@
 
 // LRU Based map of 5 tuple flow to natting, statistics, state etc. 
 use std::option::Option;
-use std::net::Ipv4Addr;
-
 
 const CACHESIZE:usize = 1024;
 
 pub struct NatMap {
 	id: u32,
-	cache: lru::LruCache<Ipv4Addr, Ipv4Addr>,
+	cache: lru::LruCache<[u8; 4], [u8; 4]>,
 }
 
 impl NatMap {
@@ -20,12 +18,12 @@ impl NatMap {
 		NatMap { id: 123, cache: lru::LruCache::new(CACHESIZE) }
 	}
 
-	pub fn put(&mut self, key: Ipv4Addr,  val: Ipv4Addr ){ 
+	pub fn put(&mut self, key: [u8; 4],  val: [u8; 4] ){ 
 		self.id = 124;
 		self.cache.put(key,val);
 	}
 
-	pub fn get(&mut self, key: Ipv4Addr) -> Option<&Ipv4Addr>{ 
+	pub fn get(&mut self, key: [u8; 4]) -> Option<&[u8; 4]>{ 
 		self.id = 123;
 		self.cache.get(&key)
 	}

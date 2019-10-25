@@ -93,21 +93,21 @@ impl Default for DNSCache {
             }
             _ => panic!(),
         }
-        nat_map.put(ip_a,ip_b);
-        nat_map.put(ip_b,ip_a);
+        nat_map.put(ip_a.octets(),ip_b.octets());
+        nat_map.put(ip_b.octets(),ip_a.octets());
 
-        match nat_map.get(ip_a) { 
+        match nat_map.get(ip_a.octets()) { 
                 Some(ip) => {
-                    println!("nat_map - A: {}, ip_b: {} ", ip_a.to_string(), ip.to_string());
+                    println!("nat_map - A: {:?}, ip_b: {:?} ", ip_a, ip);
                 },
-                None => { assert!(false, "failed to get nat mapping ip_a->ip_b for {} ", ip_a.to_string());},
+                None => { assert!(false, "failed to get nat mapping ip_a->ip_b for {:?} ", ip_a);},
         } 
 
-        match nat_map.get(ip_b) { 
+        match nat_map.get(ip_b.octets()) { 
                 Some(ip) => {
-                    println!("nat_map - B: {}, ip_a: {} ", ip_b.to_string(), ip.to_string());
+                    println!("nat_map - B: {:?}, ip_a: {:?} ", ip_b, ip);
                 },
-                None => { assert!(false, "failed to get nat mapping ip_b->ip_a for {} ", ip_b.to_string());},
+                None => { assert!(false, "failed to get nat mapping ip_b->ip_a for {:?} ", ip_b);},
         } 
     }
     host_cache.store(&dns_records);
