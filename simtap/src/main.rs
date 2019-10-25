@@ -128,44 +128,44 @@ fn process_tcp(ip: &etherparse::Ipv4Header, cm: &mut ConnectionManager, recv_buf
 	let nat_port_entry: (u16, u16);
 
 
-//	let query = FiveTuple {
-//       src: (ip.source, tcph.source_port()),
-//       dst: (ip.destination, tcph.destination_port()),
-//       protocol: ip.protocol,
-//    };
-//
-//	let r_query = FiveTuple {
-//       src: (ip.destination, tcph.destination_port()),
-//       dst: (ip.source, tcph.source_port()),
-//       protocol: ip.protocol,
-//    };
-//
-//	match cm.connections.get(query) { 
-//		Some(con) => {
-//			nat_addr_entry = con.nat_addr;
-//            nat_port_entry = con.nat_port;
-//            //println!("tcp: Found existing connection: {:?} : {:?} ", nat_addr_entry, nat_port_entry);
-//		},
-//		None => { 
-//            let mut c = Connection { 
-//				id: 1,
-//				nat_addr: (ip.source,ip.destination),
-//				nat_port: (tcph.source_port(),tcph.destination_port()),
-//			};
-//    		nat_addr_entry = c.nat_addr;
-//	        nat_port_entry = c.nat_port;
-//
-//	        //println!("tcp: creating new connection: {:?} : {:?} ", nat_addr_entry, nat_port_entry);
-//	        cm.connections.put(query,c);
-//
-//    		c = Connection { 
-//				id: 1,
-//				nat_addr: (ip.destination,ip.source),
-//				nat_port: (tcph.destination_port(),tcph.source_port()),
-//			};
-//			cm.connections.put(r_query,c);
-//		}
-//	}
+	let query = FiveTuple {
+       src: (ip.source, tcph.source_port()),
+       dst: (ip.destination, tcph.destination_port()),
+       protocol: ip.protocol,
+    };
+
+	let r_query = FiveTuple {
+       src: (ip.destination, tcph.destination_port()),
+       dst: (ip.source, tcph.source_port()),
+       protocol: ip.protocol,
+    };
+
+	match cm.connections.get(query) { 
+		Some(con) => {
+			nat_addr_entry = con.nat_addr;
+            nat_port_entry = con.nat_port;
+            //println!("tcp: Found existing connection: {:?} : {:?} ", nat_addr_entry, nat_port_entry);
+		},
+		None => { 
+            let mut c = Connection { 
+				id: 1,
+				nat_addr: (ip.source,ip.destination),
+				nat_port: (tcph.source_port(),tcph.destination_port()),
+			};
+    		nat_addr_entry = c.nat_addr;
+	        nat_port_entry = c.nat_port;
+
+	        //println!("tcp: creating new connection: {:?} : {:?} ", nat_addr_entry, nat_port_entry);
+	        cm.connections.put(query,c);
+
+    		c = Connection { 
+				id: 1,
+				nat_addr: (ip.destination,ip.source),
+				nat_port: (tcph.destination_port(),tcph.source_port()),
+			};
+			cm.connections.put(r_query,c);
+		}
+	}
 
 	let buffer_len = send_buf.len();
 
