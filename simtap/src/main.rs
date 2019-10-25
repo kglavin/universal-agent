@@ -8,7 +8,14 @@ mod dnsresolv;
 use crate::types::{FiveTuple, Connection};
 use std::net::Ipv4Addr;
 use dnsresolv::DNSCache;
-use hermes::dns::protocol::{QueryType,ResultCode};
+use hermes::dns::protocol::{ResultCode};
+
+
+#[cfg(target_os = "macos")]
+	const UTUNHEADER: [u8; 4] = [0,0,0,2];
+#[cfg(target_os = "linux")]
+	const UTUNHEADER: [u8; 4] = [0,0,8,0];
+	const UTUNHEADERLEN: usize = 4;
 
 
 #[derive(Default)]
@@ -19,10 +26,87 @@ struct ConnectionManager {
 	wan_cache: DNSCache
 }
 
+fn process_l3(cm: &mut ConnectionManager, recv_buf: &[u8], len: usize, send_buf: &mut[u8]) -> usize { 
+	let local_tun_addr = Ipv4Addr::new(192,168,166,1);
+	let local_tun_network = Ipv4Addr::new(192,168,166,0);
+	let local_tun_network_size = 24; // /24 netmask
+
+	let server_virt_addr : Ipv4Addr;
+	let mut server_dst_addr =  Ipv4Addr::new(0,0,0,0);
+
+	let iph = etherparse::Ipv4HeaderSlice::from_slice(&recv_buf[UTUNHEADERLEN..len]).expect("could not parse rx ip header");
+	let datai = UTUNHEADERLEN + iph.slice().len();
+	let payload = &recv_buf[datai..len];
+	let payload_bytes = len-datai;
+
+	let mut ip = iph.to_header();
+
+	if iph.source_addr() == local_tun_addr {
+		// originating from host 
+		server_virt_addr = iph.destination_addr();
+		match cm.nat_map.get(server_virt_addr) { 
+        	Some(d_ip) => {
+                server_dst_addr = *d_ip;
+        	},
+        	None => { assert!(false, "failed to get nat mapping for {} ", server_virt_addr.to_string());},
+		}
+		ip.source = server_virt_addr.octets();
+		ip.destination = server_dst_addr.octets();		
+	} else { 
+		// not originating from host
+		// is it from virtual subnet (ala 192.168.166.0/24)
+		let sig_octets = local_tun_network_size/8;
+		let l_t_n_octets = local_tun_network.octets();
+		let i_s_a_octets = iph.source_addr().octets();
+		let d_s_a_octets = iph.destination_addr().octets();
+		let local_network = &l_t_n_octets[0..sig_octets-1];
+		let src_network = &i_s_a_octets[0..sig_octets-1];
+		let _dst_network = &d_s_a_octets[0..sig_octets-1];
+
+		if local_network == src_network {  
+			// this packet is outbound from a virtual server 
+			// no natting needed as this is handled on the os outbound inteface nat. 
+			// so lets just have a hook for look and debug at moment. 
+			eprintln!("got packet from local virtual ip query: {:?}, hook and look only", iph);
+			// All the ip headers corrently here. 
+		} else { 
+			// its not from the local virtual server set of ips so it must be inbound and needing 
+			// our natting its destination from the virtual server to the host ip and the source from the 
+			// external address to the virtual server address.
+			let mut server_virt_addr =  Ipv4Addr::new(0,0,0,0);
+			server_dst_addr = iph.destination_addr();
+			match cm.nat_map.get(server_dst_addr) { 
+        		Some(sv_ip) => {
+                	 server_virt_addr = *sv_ip;
+        		},
+        		None => { assert!(false, "failed to get nat mapping for {} ", server_dst_addr.to_string());},
+			}
+			ip.source = server_virt_addr.octets();
+			ip.destination = local_tun_addr.octets();
+		} 
+	}
+	// now prepare L3 packet to send, copying the utun, ip header and higher level protocol payload into send buffer. 
+	//4 + ip + payload
+	let pdu_len = UTUNHEADERLEN + ip.header_len() as usize + payload_bytes;
+	assert!(pdu_len <= 1504, "pdu too long: {}",pdu_len);
+	// place proper tun header on the out -- utun_header_len(4)
+	send_buf[..UTUNHEADERLEN].clone_from_slice(&UTUNHEADER);
+	// reform iph+payload with checksums 
+	let mut unwritten = &mut send_buf[UTUNHEADERLEN..];
+	ip.write(&mut unwritten).unwrap();
+
+    if payload_bytes > 0 { 
+    	assert!(datai < len, "datai {} > len {}", datai, len);
+    	assert!(unwritten.len() > (len-datai), " unwritten written too small: {} len: {}, datai: {}, ",unwritten.len(),len,datai );
+    	unwritten[..payload_bytes].copy_from_slice(&payload);
+	}
+    //return the payload bytes so the lower layer knows the lenght of buffer its dealing with. 
+    pdu_len
+}
+
 
 fn process_tcp(cm: &mut ConnectionManager, recv_buf: &[u8], len: usize, send_buf: &mut[u8]) -> usize { 
 
-	let _srv_dst = [172,217,0,36];
 	let local_tun_addr = Ipv4Addr::new(192,168,166,1);
 	let local_tun_network = Ipv4Addr::new(192,168,166,0);
 	let local_tun_network_size = 24; // /24 netmask
@@ -30,16 +114,11 @@ fn process_tcp(cm: &mut ConnectionManager, recv_buf: &[u8], len: usize, send_buf
 	//let server_dst_addr = Ipv4Addr::new(172,217,0,36);
 	let mut server_dst_addr =  Ipv4Addr::new(0,0,0,0);
 
-#[cfg(target_os = "macos")]
-	let utunheader:[u8; 4] = [0,0,0,2];
-#[cfg(target_os = "linux")]
-	let utunheader:[u8; 4] = [0,0,8,0];
 
-	let utun_header_len = utunheader.len();
 
-	let iph = etherparse::Ipv4HeaderSlice::from_slice(&recv_buf[utun_header_len..len]).expect("could not parse rx ip header");
-	let tcph = etherparse::TcpHeaderSlice::from_slice(&recv_buf[utun_header_len+iph.slice().len()..len]).expect("could not parse rx tcp header");
-	let datai = utun_header_len + iph.slice().len() + tcph.slice().len();
+	let iph = etherparse::Ipv4HeaderSlice::from_slice(&recv_buf[UTUNHEADERLEN..len]).expect("could not parse rx ip header");
+	let tcph = etherparse::TcpHeaderSlice::from_slice(&recv_buf[UTUNHEADERLEN+iph.slice().len()..len]).expect("could not parse rx tcp header");
+	let datai = UTUNHEADERLEN + iph.slice().len() + tcph.slice().len();
 	let payload = &recv_buf[datai..len];
 	let payload_bytes = len-datai;
 
@@ -195,15 +274,15 @@ fn process_tcp(cm: &mut ConnectionManager, recv_buf: &[u8], len: usize, send_buf
 
 	
 	//4 + ip +  tcp +  tcp payload
-	let pdu_len = utun_header_len + ip.header_len() as usize + tcp.header_len() as usize + payload_bytes;
+	let pdu_len = UTUNHEADERLEN + ip.header_len() as usize + tcp.header_len() as usize + payload_bytes;
 	assert!(pdu_len <= 1504, "pdu too long: {}",pdu_len);
 	let buffer_len = send_buf.len();
 
 	// place proper tun header on the out -- utun_header_len(4)
-	send_buf[..utun_header_len].clone_from_slice(&utunheader);
+	send_buf[..UTUNHEADERLEN].clone_from_slice(&UTUNHEADER);
 
 	// reform iph+tcph+payload with checksums refer to tcp.rs
-	let mut unwritten = &mut send_buf[utun_header_len..];
+	let mut unwritten = &mut send_buf[UTUNHEADERLEN..];
 	ip.write(&mut unwritten).unwrap();
 	let ip_header_ends_at = buffer_len - unwritten.len();
 
@@ -314,19 +393,12 @@ fn main() {
 	    let mut out = [0u8; 2004];
 	    let len: usize;
 
-#[cfg(target_os = "macos")]    
-	    let utunheader:[u8; 4] = [0,0,0,2];
-#[cfg(target_os = "linux")]    
-	    let utunheader:[u8; 4] = [0,0,8,0];
-
-		let utun_header_len = utunheader.len();
-
 		len = recv_buffer(&interface,&mut buf);
 
 		// assuming this is ipv4 for the moment
 		//let iph = etherparse::Ipv4HeaderSlice::from_slice(&buf[utun_header_len..len]).expect("could not parse rx ip header");
         
-        match etherparse::Ipv4HeaderSlice::from_slice(&buf[utun_header_len..len]) {
+        match etherparse::Ipv4HeaderSlice::from_slice(&buf[UTUNHEADERLEN..len]) {
     	    Ok(iph) => {	
 		        println!("<- : \tsrc: {} dst: {} len: {} proto: {} ",iph.source_addr(),iph.destination_addr(),len,iph.protocol());
 		        match iph.protocol() { 
@@ -336,6 +408,9 @@ fn main() {
 			        },
 			
 			        0x06 => { 
+			        	let outbuf_len = process_l3(&mut cm, &buf, len, &mut out);
+			        	let iph = etherparse::Ipv4HeaderSlice::from_slice(&out[4..outbuf_len]).expect("could not parse tx ip header");
+						println!("L3-> : \tsrc: {} dst: {} len: {} proto: {} ",iph.source_addr(),iph.destination_addr(),outbuf_len,iph.protocol());
 			        	let outbuf_len = process_tcp(&mut cm, &buf, len, &mut out);
 			        	send_buffer(&interface,&mut out,outbuf_len);	
 			        },
