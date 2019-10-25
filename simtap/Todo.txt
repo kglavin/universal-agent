@@ -1,6 +1,11 @@
 Todo.txt
 
 
+get L3 processing across icmp, udp 
+intercept dns and use that to populate the caches instead of linear reading.
+consider service chaning as a in_pre_unpack, in_unpack, in, in_post, in_post_pack 
+
+
 
 
 measure tcp packet trees for purposes of EUE
@@ -16,4 +21,6 @@ NPM inside wasm
 cloud tether, diverse path, fec etc 
 packet racing with two NATS ( end to end?)
 
+
+routing via raw egress interface. 
 
