@@ -223,7 +223,7 @@ fn process_icmp(ip: &etherparse::Ipv4Header, _cm: &mut ConnectionManager, recv_b
 	len
 }
 
-fn recv_buffer(interface: &netif::Interface, mut recv_buf: &mut[u8]) -> usize { 
+fn recv_buffer(interface: &mut netif::Interface, mut recv_buf: &mut[u8]) -> usize { 
 	let mut len: usize = 0;
 	match interface.recv(&mut recv_buf) {
 				Ok(n) => { len = n;
@@ -235,7 +235,7 @@ fn recv_buffer(interface: &netif::Interface, mut recv_buf: &mut[u8]) -> usize {
 	len
 }
 
-fn send_buffer(interface: &netif::Interface, send_buf: &[u8], len: usize) { 
+fn send_buffer(interface: &mut netif::Interface, send_buf: &[u8], len: usize) { 
 	match interface.send(&send_buf[..len]) { 
 		Ok(_n_sent) => { 
 			//println!("wrote {} bytes", _n_sent) 
@@ -255,9 +255,9 @@ fn main() {
 
 	let _name = "utun1";
 	#[cfg(target_os = "macos")]
-	let interface = netif::Interface::new(mac_utun::get_utun().expect("Error, did not get a untun returned")); 
+	let mut interface = netif::Interface::new(mac_utun::get_utun().expect("Error, did not get a untun returned")); 
 	#[cfg(target_os = "linux")]
-	let interface = netif::Interface::new(tun_tap::Iface::new(_name, tun_tap::Mode::Tun).unwrap());
+	let mut interface = netif::Interface::new(tun_tap::Iface::new(_name, tun_tap::Mode::Tun).unwrap());
 
 	loop {
 	
@@ -265,7 +265,7 @@ fn main() {
 	    let mut out = [0u8; 2004];
 	    let len: usize;
 
-		len = recv_buffer(&interface,&mut buf);
+		len = recv_buffer(&mut interface,&mut buf);
 
 		// assuming this is ipv4 for the moment
 		//let iph = etherparse::Ipv4HeaderSlice::from_slice(&buf[utun_header_len..len]).expect("could not parse rx ip header");
@@ -279,7 +279,7 @@ fn main() {
 			        	let iph = etherparse::Ipv4HeaderSlice::from_slice(& out[4..outbuf_len] as &[u8]).expect("could not parse tx ip header");
 						//println!("L3-> : \tsrc: {} dst: {} len: {} proto: {} ",iph.source_addr(),iph.destination_addr(),outbuf_len,iph.protocol());
 			       		//outbuf_len = process_tcp(&iph, &mut cm, &recv_buf, len, &mut send_buf);
-			        	send_buffer(&interface,&mut out,outbuf_len);	
+			        	send_buffer(&mut interface, &mut out,outbuf_len);	
 			        },
         			41 => println!("ipv6"),
         			_ => println!("unknown: {} ", iph.protocol()),
