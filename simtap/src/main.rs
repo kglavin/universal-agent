@@ -107,11 +107,26 @@ fn process_l3(mut cm: &mut ConnectionManager, recv_buf: &[u8], len: usize, send_
 
 	let mut unwritten = &mut send_buf[UTUNHEADERLEN..];
 	ip.write(&mut unwritten).unwrap();
- 	let tcp_len = process_tcp(&ip, &mut cm, &l3_payload, l3_payload_bytes, &mut unwritten);
- 	assert!(UTUNHEADERLEN + ip.header_len() as usize + tcp_len <= 1504, "L3 pdu too long: {}",UTUNHEADERLEN + ip.header_len() as usize + tcp_len);
 
+	let mut l3_len_out: usize = 0;
+
+    match ip.protocol { 
+        0x01 => {
+			l3_len_out = process_icmp(&ip, &mut cm, &l3_payload, l3_payload_bytes, &mut unwritten);	
+        },
+
+        0x06 => { 
+			l3_len_out = process_tcp(&ip, &mut cm, &l3_payload, l3_payload_bytes, &mut unwritten);	
+        },
+
+        17 => { 
+        	l3_len_out = process_icmp(&ip, &mut cm, &l3_payload, l3_payload_bytes, &mut unwritten);	
+        },
+		_ => println!("unknown: {} ", ip.protocol),
+    }
+ 	assert!(UTUNHEADERLEN + ip.header_len() as usize + l3_len_out <= 1504, "L3 pdu too long: {}",UTUNHEADERLEN + ip.header_len() as usize + l3_len_out);
  	//return
- 	UTUNHEADERLEN + ip.header_len() as usize + tcp_len
+ 	UTUNHEADERLEN + ip.header_len() as usize + l3_len_out
 }
 
 
@@ -196,14 +211,16 @@ fn process_tcp(ip: &etherparse::Ipv4Header, cm: &mut ConnectionManager, recv_buf
 	payload_ends_at
 }
 
-fn process_udp(_cm: &mut ConnectionManager, recv_buf: &[u8], _len: usize, _send_buf: &mut[u8]) -> usize { 
-	println!("dropping udp: {:?} bytes", &recv_buf[..64]);
-	0
+fn process_udp(ip: &etherparse::Ipv4Header, _cm: &mut ConnectionManager, recv_buf: &[u8], len: usize, send_buf: &mut[u8]) -> usize { 
+	// doing no processing at moment, just copy udp payload from in to out
+	send_buf.copy_from_slice(recv_buf);
+	len
 }
 
-fn process_icmp(_cm: &mut ConnectionManager, recv_buf: &[u8], _len: usize, _send_buf: &mut[u8]) -> usize { 
-	println!("dropping icmp: {:?} bytes", &recv_buf[..64]);
-	0
+fn process_icmp(ip: &etherparse::Ipv4Header, _cm: &mut ConnectionManager, recv_buf: &[u8], len: usize, send_buf: &mut[u8]) -> usize { 
+	// doing no processing at moment, just copy udp payload from in to out
+	send_buf.copy_from_slice(recv_buf);
+	len
 }
 
 fn recv_buffer(interface: &netif::Interface, mut recv_buf: &mut[u8]) -> usize { 
@@ -222,7 +239,7 @@ fn send_buffer(interface: &netif::Interface, send_buf: &[u8], len: usize) {
 	match interface.send(&send_buf[..len]) { 
 		Ok(_n_sent) => { 
 			//println!("wrote {} bytes", _n_sent) 
-			let iph = etherparse::Ipv4HeaderSlice::from_slice(&send_buf[4..len]).expect("could not parse tx ip header");
+			//let iph = etherparse::Ipv4HeaderSlice::from_slice(&send_buf[UTUNHEADERLEN..len]).expect("could not parse tx ip header");
 			//println!("-> : \tsrc: {} dst: {} len: {} proto: {} ",iph.source_addr(),iph.destination_addr(),len,iph.protocol());
 		},
 		Err(e) => println!("send function failed on {}: {:?}", interface.name(),e),
@@ -234,38 +251,13 @@ fn main() {
 
 	let mut cm = ConnectionManager::default();
 
-	//use hermes::dns::protocol::{DnsRecord, QueryType, ResultCode, TransientTtl};
-	// host_dns cache holds the ip of locally natted app targets
-
-
 	dnsresolv::initialize_caches(&mut cm.host_cache, &mut cm.wan_cache,&mut cm.nat_map);
 
-	//if let Some(packet) = cm.host_cache.lookup("google.com", QueryType::A) { 
-	//	assert_eq!(ResultCode::NOERROR, packet.header.rescode);
-	//}
-
-	//if let Some(packet) = cm.wan_cache.lookup("google.com", QueryType::A) { 
-	//	assert_eq!(ResultCode::NOERROR, packet.header.rescode);
-	//}
-
-	//let ip_a =  Ipv4Addr::new(192,168,166,3);
-    //match cm.nat_map.get(ip_a) { 
-    //    Some(ip) => {
-    //        println!("nat_map - A: {}, ip_b: {} ", ip_a.to_string(), ip.to_string());
-    //    },
-    //    None => { println!( "failed to get nat mapping ip_a->ip_b for {} ", ip_a.to_string());},
-	//} 
-
-
-	//let srv_dst = [10,33,116,118];
 	let _name = "utun1";
 	#[cfg(target_os = "macos")]
 	let interface = netif::Interface::new(mac_utun::get_utun().expect("Error, did not get a untun returned")); 
 	#[cfg(target_os = "linux")]
 	let interface = netif::Interface::new(tun_tap::Iface::new(_name, tun_tap::Mode::Tun).unwrap());
-	//let interface = netif::Interface::new(tun_tap::Iface::without_packet_info(_name, tun_tap::Mode::Tun).unwrap());
-
- 	
 
 	loop {
 	
@@ -282,24 +274,13 @@ fn main() {
     	    Ok(iph) => {	
 		        //println!("<- : \tsrc: {} dst: {} len: {} proto: {} ",iph.source_addr(),iph.destination_addr(),len,iph.protocol());
 		        match iph.protocol() { 
-			        0x01 => {
-			        	let outbuf_len = process_icmp(&mut cm, &buf, len, &mut out);
-			        	send_buffer(&interface,&mut out,outbuf_len);	
-			        },
-			
-			        0x06 => { 
+			        0x01|0x06|0x11 => { 
 			        	let outbuf_len = process_l3(&mut cm, &buf, len, &mut out);
 			        	let iph = etherparse::Ipv4HeaderSlice::from_slice(& out[4..outbuf_len] as &[u8]).expect("could not parse tx ip header");
 						//println!("L3-> : \tsrc: {} dst: {} len: {} proto: {} ",iph.source_addr(),iph.destination_addr(),outbuf_len,iph.protocol());
 			       		//outbuf_len = process_tcp(&iph, &mut cm, &recv_buf, len, &mut send_buf);
 			        	send_buffer(&interface,&mut out,outbuf_len);	
 			        },
-
-			        17 => { 
-			        	let outbuf_len = process_udp(&mut cm, &buf, len, &mut out);
-			        	send_buffer(&interface,&mut out,outbuf_len);
-			        },
-        
         			41 => println!("ipv6"),
         			_ => println!("unknown: {} ", iph.protocol()),
         	        }
