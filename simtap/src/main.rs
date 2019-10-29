@@ -58,7 +58,7 @@ fn process_l3(mut cm: &mut ConnectionManager, recv_buf: &[u8], len: usize, send_
 
 		ip.source = server_virt_addr;
 		ip.destination = server_dst_addr;
-		//println!("ip: found tun local flow: {:?} : {:?} ", ip.source, ip.destination);		
+		//println!("ip: found tun local flow: {:?} : {:?}  carrying {} bytes", ip.source, ip.destination, l3_payload_bytes);		
 	} else { 
 		// not originating from host
 		// is it from virtual subnet (ala 192.168.166.0/24)
@@ -91,7 +91,6 @@ fn process_l3(mut cm: &mut ConnectionManager, recv_buf: &[u8], len: usize, send_
 			//println!("ip: found inbound server flow: {:?} : {:?} ", ip.source, ip.destination);
 			ip.source = server_dst_addr;
 			ip.destination = local_tun_addr;
-			//println!("ip: mapped inbound server flow: {:?} : {:?} ", ip.source, ip.destination);
 		} 
 	}
 
@@ -120,7 +119,7 @@ fn process_l3(mut cm: &mut ConnectionManager, recv_buf: &[u8], len: usize, send_
         },
 
         17 => { 
-        	l3_len_out = process_icmp(&ip, &mut cm, &l3_payload, l3_payload_bytes, &mut unwritten);	
+        	l3_len_out = process_udp(&ip, &mut cm, &l3_payload, l3_payload_bytes, &mut unwritten);	
         },
 		_ => println!("unknown: {} ", ip.protocol),
     }
@@ -213,13 +212,25 @@ fn process_tcp(ip: &etherparse::Ipv4Header, cm: &mut ConnectionManager, recv_buf
 
 fn process_udp(ip: &etherparse::Ipv4Header, _cm: &mut ConnectionManager, recv_buf: &[u8], len: usize, send_buf: &mut[u8]) -> usize { 
 	// doing no processing at moment, just copy udp payload from in to out
-	send_buf.copy_from_slice(recv_buf);
+
+	let udph = etherparse::UdpHeaderSlice::from_slice(&recv_buf[..len]).expect("could not parse rx udp header");
+	let datai = udph.slice().len();
+	let udp_payload = &recv_buf[datai..len];
+	let udp_payload_bytes = len-datai;
+	let mut udp = udph.to_header();
+
+	udp.checksum = udp.calc_checksum_ipv4(&ip, &udp_payload[..udp_payload_bytes])
+        .expect("failed to compute checksum");
+
+    let mut unwritten = &mut send_buf[0..];
+    udp.write(&mut unwritten).unwrap();
+    unwritten[..udp_payload_bytes].copy_from_slice(&udp_payload);   
 	len
 }
 
 fn process_icmp(ip: &etherparse::Ipv4Header, _cm: &mut ConnectionManager, recv_buf: &[u8], len: usize, send_buf: &mut[u8]) -> usize { 
 	// doing no processing at moment, just copy udp payload from in to out
-	send_buf.copy_from_slice(recv_buf);
+	send_buf[..len].copy_from_slice(&recv_buf[..len]);
 	len
 }
 
@@ -268,7 +279,7 @@ fn main() {
 		len = recv_buffer(&mut interface,&mut buf);
 
 		// assuming this is ipv4 for the moment
-		//let iph = etherparse::Ipv4HeaderSlice::from_slice(&buf[utun_header_len..len]).expect("could not parse rx ip header");
+		//let iph = etherparse::Ipv4HeaderSlice::from_slice(&buf[UTUNHEADERLEN..len]).expect("could not parse rx ip header");
         
         match etherparse::Ipv4HeaderSlice::from_slice(&buf[UTUNHEADERLEN..len]) {
     	    Ok(iph) => {	
