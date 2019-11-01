@@ -12,6 +12,10 @@ use crate::types::Connection;
 use std::net::Ipv4Addr;
 use dnsresolv::DNSCache;
 
+use hermes::dns::buffer::{BytePacketBuffer};
+use hermes::dns::protocol::{DnsPacket,DnsRecord,QueryType, ResultCode,TransientTtl};
+
+
 
 
 #[cfg(target_os = "macos")]
@@ -104,8 +108,10 @@ fn process_l3(mut cm: &mut ConnectionManager, recv_buf: &[u8], len: usize, send_
 	send_buf[..UTUNHEADERLEN].clone_from_slice(&UTUNHEADER);
 	// reform iph+payload with checksums 
 
-	let mut unwritten = &mut send_buf[UTUNHEADERLEN..];
-	ip.write(&mut unwritten).unwrap();
+	let iphl = ip.ihl()as usize *4;
+	let mut unwritten = &mut send_buf[UTUNHEADERLEN+iphl..];
+	// cannot write ip header until we know the payload lenght that may change do to higher level payload changes
+	//ip.write(&mut unwritten).unwrap();
 
 	let mut l3_len_out: usize = 0;
 
@@ -123,6 +129,10 @@ fn process_l3(mut cm: &mut ConnectionManager, recv_buf: &[u8], len: usize, send_
         },
 		_ => println!("unknown: {} ", ip.protocol),
     }
+	
+	let mut unwritten = &mut send_buf[UTUNHEADERLEN..UTUNHEADERLEN+iphl];
+	ip.payload_len = l3_len_out as u16;
+	ip.write(&mut unwritten).unwrap();
  	assert!(UTUNHEADERLEN + ip.header_len() as usize + l3_len_out <= 1504, "L3 pdu too long: {}",UTUNHEADERLEN + ip.header_len() as usize + l3_len_out);
  	//return
  	UTUNHEADERLEN + ip.header_len() as usize + l3_len_out
@@ -210,7 +220,7 @@ fn process_tcp(ip: &etherparse::Ipv4Header, cm: &mut ConnectionManager, recv_buf
 	payload_ends_at
 }
 
-fn process_udp(ip: &etherparse::Ipv4Header, _cm: &mut ConnectionManager, recv_buf: &[u8], len: usize, send_buf: &mut[u8]) -> usize { 
+fn process_udp(ip: &etherparse::Ipv4Header, cm: &mut ConnectionManager, recv_buf: &[u8], len: usize, send_buf: &mut[u8]) -> usize { 
 	// doing no processing at moment, just copy udp payload from in to out
 
 	let udph = etherparse::UdpHeaderSlice::from_slice(&recv_buf[..len]).expect("could not parse rx udp header");
@@ -219,6 +229,87 @@ fn process_udp(ip: &etherparse::Ipv4Header, _cm: &mut ConnectionManager, recv_bu
 	let udp_payload_bytes = len-datai;
 	let mut udp = udph.to_header();
 
+	// if udp dest port == 53 then outbound dns request
+	// let it progress
+
+	// if udp src port == 53 then its inbound response
+	// parse the response, see if its one of the target domains, 
+	// if it is then add the real response to the wan table, 
+	// and change the response to use whats contained in dns cache. 
+
+	if udp.destination_port == 53 { 
+		//println!("outbound dns-> : \tsrc: {:?} dst: {:?} ",ip.source,ip.destination);
+		let mut req_buffer = BytePacketBuffer::new();
+		req_buffer.buf[..udp_payload_bytes].copy_from_slice(&udp_payload);
+        let request = match hermes::dns::protocol::DnsPacket::from_buffer(&mut req_buffer) {
+            Ok(x) => x,
+            Err(e) => {
+                println!("Failed to parse UDP outbound query packet: {:?}", e);
+                hermes::dns::protocol::DnsPacket::new()
+            }
+        };
+        //request.print();
+	}
+
+	if udp.source_port == 53 { 
+		//println!("inbound  dns-> : \tsrc: {:?} dst: {:?} ",ip.source,ip.destination);
+		let mut rsp_buffer = BytePacketBuffer::new();
+		rsp_buffer.buf[..udp_payload_bytes].copy_from_slice(&udp_payload);
+        let mut response = match hermes::dns::protocol::DnsPacket::from_buffer(&mut rsp_buffer) {
+            Ok(x) => x,
+            Err(e) => {
+                println!("Failed to parse UDP inbound query packet: {:?}", e);
+                hermes::dns::protocol::DnsPacket::new()
+            }
+        };
+ 
+ 		let mut ip_response: Ipv4Addr;
+	 	let name = &response.questions[0].name;
+	 	if let Some(mut packet) = cm.host_cache.lookup(name, QueryType::A) { 
+	        let mut wan_records = Vec::new();
+			match response.answers[0] {
+	        	DnsRecord::A { ref domain, addr, .. } => {
+	            	//println!("got dns resolution of interest: {}, ip: {} ", domain.to_string(), addr.to_string());
+	            	wan_records.push(DnsRecord::A {
+	                	domain: domain.to_string(),
+	                	addr: addr,
+	                	ttl: TransientTtl(180),
+	            	});
+	            	cm.wan_cache.store(&wan_records);
+	            }
+	            _ => {println!("no match on dns resolution of interest");}
+	        }     
+
+	        //rsp_buffer = BytePacketBuffer::new();
+    	    rsp_buffer.pos = 0;
+        	response.header.answers=1;
+			response.header.write(&mut rsp_buffer);
+			for question in &response.questions {
+            	question.write(&mut rsp_buffer);
+        	}
+		
+			//hermes package does not support compressed domain names in PDU so hand code answer part 
+			let mut answer:[ u8; 16] = [0xc0,0x0c,0,1,0,1,0,0,1,22,0,4,0,0,0,0];
+			match packet.answers[0] {
+    			DnsRecord::A { ref domain, addr, .. } => {
+        			answer[12..].copy_from_slice(&addr.octets());
+		        	rsp_buffer.buf[rsp_buffer.pos..rsp_buffer.pos+16].copy_from_slice(&answer[..]); 
+		        	rsp_buffer.pos = rsp_buffer.pos + 16;
+		        	udp.length = rsp_buffer.pos as u16 + 8;
+					udp.checksum = udp.calc_checksum_ipv4(&ip, &rsp_buffer.buf[..rsp_buffer.pos]).expect("failed to compute checksum");
+					let mut unwritten = &mut send_buf[0..];
+					udp.write(&mut unwritten).unwrap();
+					unwritten[..rsp_buffer.pos].copy_from_slice(&rsp_buffer.buf[..rsp_buffer.pos]); 
+					// 8 is udp header length
+					return rsp_buffer.pos + 8;
+        		}
+        		_ => {println!("failed to match packet answer[0]");}
+        	}
+		}
+	}
+
+    // upd packet has not been processed prior in this function so 
+    // write it and its payload out returning the len of the pdu (udp + payload)
 	udp.checksum = udp.calc_checksum_ipv4(&ip, &udp_payload[..udp_payload_bytes])
         .expect("failed to compute checksum");
 
