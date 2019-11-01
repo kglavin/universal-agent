@@ -377,11 +377,13 @@ fn main() {
 		        //println!("<- : \tsrc: {} dst: {} len: {} proto: {} ",iph.source_addr(),iph.destination_addr(),len,iph.protocol());
 		        match iph.protocol() { 
 			        0x01|0x06|0x11 => { 
+			        	interface.pcap_write(&buf,len as u32);
 			        	let outbuf_len = process_l3(&mut cm, &buf, len, &mut out);
 			        	let iph = etherparse::Ipv4HeaderSlice::from_slice(& out[4..outbuf_len] as &[u8]).expect("could not parse tx ip header");
 						//println!("L3-> : \tsrc: {} dst: {} len: {} proto: {} ",iph.source_addr(),iph.destination_addr(),outbuf_len,iph.protocol());
 			       		//outbuf_len = process_tcp(&iph, &mut cm, &recv_buf, len, &mut send_buf);
-			        	send_buffer(&mut interface, &mut out,outbuf_len);	
+			        	send_buffer(&mut interface, &mut out,outbuf_len);
+			        	interface.pcap_write(&out,outbuf_len as u32);	
 			        },
         			41 => println!("ipv6"),
         			_ => println!("unknown: {} ", iph.protocol()),

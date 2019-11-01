@@ -85,14 +85,14 @@ impl Interface {
 			}
 		}
 	pub fn send(&mut self, buf: &[u8]) -> std::io::Result<usize> { 
-		self.nic.pcap_write(buf,buf.len() as u32);
+		//self.nic.pcap_write(buf,buf.len() as u32);
 		self.nic.send(buf)
 	}
 	pub fn recv(&mut self, mut buf: &mut[u8]) -> std::io::Result<usize> { 
 		let res: std::io::Result<usize>; 
 		match self.nic.recv(&mut buf) {  
 			Ok(n) => {
-				self.nic.pcap_write(buf,n as u32);
+				//self.nic.pcap_write(buf,n as u32);
 				res = Ok(n);
 			} 
 			_ => {	res = Ok(0);
@@ -101,7 +101,12 @@ impl Interface {
 		return res
 	}
 	pub fn name(&self) -> &str { 
-			self.nic.name()
+		self.nic.name()
+	}
+
+	pub fn pcap_write(&mut self, data: &[u8], len: u32)-> std::io::Result<usize> { 
+		self.nic.pcap_write(&data,len);
+		Ok(len as usize)
 	}
 
 }
@@ -122,7 +127,7 @@ impl NetworkInterface for MacosInterface {
 		unsafe {
     		libc::clock_gettime(libc::CLOCK_MONOTONIC, &mut ts);
 		}
-		self.pcap_file.write(ts.tv_sec.try_into().unwrap(),ts.tv_nsec.try_into().unwrap(),data);
+		self.pcap_file.write(ts.tv_sec.try_into().unwrap(),ts.tv_nsec.try_into().unwrap(),&data[..orig_len as usize]);
 		Ok(orig_len as usize)
 	} 
 }
@@ -143,7 +148,7 @@ impl NetworkInterface for LinuxInterface {
 		unsafe {
     		libc::clock_gettime(libc::CLOCK_MONOTONIC, &mut ts);
 		}
-		self.pcap_file.write(ts.tv_sec.try_into().unwrap(),ts.tv_nsec.try_into().unwrap(),data);
+		self.pcap_file.write(ts.tv_sec.try_into().unwrap(),ts.tv_nsec.try_into().unwrap(),&data[..orig_len as usize]);
 		Ok(orig_len as usize)
 	} 
 
