@@ -262,49 +262,56 @@ fn process_udp(ip: &etherparse::Ipv4Header, cm: &mut ConnectionManager, recv_buf
                 hermes::dns::protocol::DnsPacket::new()
             }
         };
- 
  		let mut ip_response: Ipv4Addr;
 	 	let name = &response.questions[0].name;
 	 	if let Some(mut packet) = cm.host_cache.lookup(name, QueryType::A) { 
 	        let mut wan_records = Vec::new();
-			match response.answers[0] {
-	        	DnsRecord::A { ref domain, addr, .. } => {
-	            	//println!("got dns resolution of interest: {}, ip: {} ", domain.to_string(), addr.to_string());
-	            	wan_records.push(DnsRecord::A {
-	                	domain: domain.to_string(),
-	                	addr: addr,
-	                	ttl: TransientTtl(180),
-	            	});
-	            	cm.wan_cache.store(&wan_records);
-	            }
-	            _ => {println!("no match on dns resolution of interest");}
-	        }     
+            if response.answers.len() > 0 {
+                match response.answers[0] {
+                    DnsRecord::A { ref domain, addr, .. } => {
+                        //println!("got dns resolution of interest: {}, ip: {} ", domain.to_string(), addr.to_string());
+                        wan_records.push(DnsRecord::A {
+                            domain: domain.to_string(),
+                            addr: addr,
+                            ttl: TransientTtl(180),
+                        });
+                        cm.wan_cache.store(&wan_records);
+                    }
+                    _ => {println!("no match on dns resolution of interest");}
+                }     
+            }
 
 	        //rsp_buffer = BytePacketBuffer::new();
     	    rsp_buffer.pos = 0;
-        	response.header.answers=1;
+            if response.answers.len() > 0 { 
+        	    response.header.answers=1;
+            } else { 
+        	    response.header.answers=0;
+            }
 			response.header.write(&mut rsp_buffer);
 			for question in &response.questions {
             	question.write(&mut rsp_buffer);
         	}
-		
-			//hermes package does not support compressed domain names in PDU so hand code answer part 
-			let mut answer:[ u8; 16] = [0xc0,0x0c,0,1,0,1,0,0,1,22,0,4,0,0,0,0];
-			match packet.answers[0] {
-    			DnsRecord::A { ref domain, addr, .. } => {
-        			answer[12..].copy_from_slice(&addr.octets());
-		        	rsp_buffer.buf[rsp_buffer.pos..rsp_buffer.pos+16].copy_from_slice(&answer[..]); 
-		        	rsp_buffer.pos = rsp_buffer.pos + 16;
-		        	udp.length = rsp_buffer.pos as u16 + 8;
-					udp.checksum = udp.calc_checksum_ipv4(&ip, &rsp_buffer.buf[..rsp_buffer.pos]).expect("failed to compute checksum");
-					let mut unwritten = &mut send_buf[0..];
-					udp.write(&mut unwritten).unwrap();
-					unwritten[..rsp_buffer.pos].copy_from_slice(&rsp_buffer.buf[..rsp_buffer.pos]); 
-					// 8 is udp header length
-					return rsp_buffer.pos + 8;
-        		}
-        		_ => {println!("failed to match packet answer[0]");}
-        	}
+
+            if response.header.answers == 1 { 
+                //hermes package does not support compressed domain names in PDU so hand code answer part 
+                let mut answer:[ u8; 16] = [0xc0,0x0c,0,1,0,1,0,0,1,22,0,4,0,0,0,0];
+                match packet.answers[0] {
+                    DnsRecord::A { ref domain, addr, .. } => {
+                        answer[12..].copy_from_slice(&addr.octets());
+                        rsp_buffer.buf[rsp_buffer.pos..rsp_buffer.pos+16].copy_from_slice(&answer[..]); 
+                        rsp_buffer.pos = rsp_buffer.pos + 16;
+                        udp.length = rsp_buffer.pos as u16 + 8;
+                        udp.checksum = udp.calc_checksum_ipv4(&ip, &rsp_buffer.buf[..rsp_buffer.pos]).expect("failed to compute checksum");
+                        let mut unwritten = &mut send_buf[0..];
+                        udp.write(&mut unwritten).unwrap();
+                        unwritten[..rsp_buffer.pos].copy_from_slice(&rsp_buffer.buf[..rsp_buffer.pos]); 
+                        // 8 is udp header length
+                        return rsp_buffer.pos + 8;
+                    }
+                    _ => {println!("failed to match packet answer[0]");}
+                }
+            }
 		}
 	}
 
