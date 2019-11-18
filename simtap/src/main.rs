@@ -363,6 +363,7 @@ fn main() {
 
 	loop {
 	
+		// 2000 seems to be MTU on mac tun interfaces 
 	    let mut buf = [0u8; 2004];
 	    let mut out = [0u8; 2004];
 	    let len: usize;
