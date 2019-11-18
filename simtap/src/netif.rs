@@ -23,6 +23,7 @@ struct MacosInterface {
 	socket: UdpSocket,
 	name: String,
 	pcap_file: PcapWriter<File>,
+	pcap_entry_count: u32,
 }
 
 #[cfg(target_os = "linux")]
@@ -30,6 +31,7 @@ struct MacosInterface {
 struct LinuxInterface { 
 	netif: tun_tap::Iface,
 	pcap_file: PcapWriter<File>,
+	pcap_entry_count: u32,
 }
 
 #[derive(Debug)]
@@ -58,6 +60,7 @@ impl Interface {
 			socket: intf.0,
 			name: intf.1,
 			pcap_file: pcap_writer,
+			pcap_entry_count: 0,
 		};
 		Interface { 
 			nic: n,
@@ -73,12 +76,13 @@ impl Interface {
 		    ts_correction : 0,
 		    ts_accuracy : 0,
 		    snaplen : 65535,
-		    datalink : DataLink::NULL
+		    datalink : DataLink::ETHERNET
 		};
 		let pcap_writer = PcapWriter::with_header(header,file_out).expect("Error writing file");
 		let n = LinuxInterface {
 			netif: intf,
 			pcap_file: pcap_writer,
+			pcap_entry_count: 0,
 		};
 		Interface { 
 			nic: n,
@@ -106,6 +110,22 @@ impl Interface {
 
 	pub fn pcap_write(&mut self, data: &[u8], len: u32)-> std::io::Result<usize> { 
 		self.nic.pcap_write(&data,len);
+		self.nic.pcap_entry_count += len;
+		if self.nic.pcap_entry_count > 1024000 { 
+			let file_out = File::create("/tmp/simtap.pcap").expect("Error creating file out");
+			let header = PcapHeader {
+			    magic_number : 0xa1b2c3d4,
+			    version_major : 2,
+			    version_minor : 4,
+			    ts_correction : 0,
+			    ts_accuracy : 0,
+			    snaplen : 65535,		    
+			    datalink : DataLink::NULL
+			};
+			self.nic.pcap_file = PcapWriter::with_header(header,file_out).expect("Error writing file");
+			self.nic.pcap_entry_count = 0;
+			
+		}
 		Ok(len as usize)
 	}
 
