@@ -74,7 +74,7 @@ impl Default for DNSCache {
         
  #[cfg(target_os = "macos")]
         let res = client
-           .send_udp_query(&record[0].to_string(), QueryType::A, ("192.168.11.1", 53), true)
+           .send_udp_query(&record[0].to_string(), QueryType::A, ("10.33.5.10", 53), true)
             .unwrap();
 //        let res = client
 //            .send_udp_query(&record[0].to_string(), QueryType::A, ("sfo2dmc-dnsp01.nbttech.com", 53), true)
