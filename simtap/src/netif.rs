@@ -12,7 +12,7 @@ use tun_tap;
 
 trait NetworkInterface { 
 	fn send(&mut self, buf: &[u8]) -> std::io::Result<usize>;
-	fn recv(&self, buf: &mut[u8]) -> std::io::Result<usize>;
+	fn recv(&self, mut buf: &mut[u8]) -> std::io::Result<usize>;
 	fn name(&self) -> &str;
 	fn pcap_write(&mut self, data: &[u8], orig_len: u32)-> std::io::Result<usize>;
 }
@@ -29,7 +29,7 @@ struct MacosInterface {
 #[derive(Debug)]
 struct LinuxInterface { 
 	netif: tun_tap::Iface,
-	pcap_file: PcapWriter<W>,
+	pcap_file: PcapWriter<File>,
 }
 
 #[derive(Debug)]
@@ -137,13 +137,13 @@ impl NetworkInterface for LinuxInterface {
 	fn send(&mut self, buf: &[u8]) -> std::io::Result<usize> { 
 		self.netif.send(buf)
 	}
-	fn recv(&mut self, mut buf: &mut[u8]) -> std::io::Result<usize> { 
-		self.nic.recv(&mut buf);
+	fn recv(&self, mut buf: &mut[u8]) -> std::io::Result<usize> { 
+		self.netif.recv(&mut buf)
 	}
 	fn name(&self) -> &str { 
 			self.netif.name()
 	}
-	fn pcap_write(&self,data: &[u8], orig_len: u32) -> std::io::Result<usize> {
+	fn pcap_write(&mut self,data: &[u8], orig_len: u32) -> std::io::Result<usize> {
 		let mut ts = libc::timespec { tv_sec: 0, tv_nsec: 0 };
 		unsafe {
     		libc::clock_gettime(libc::CLOCK_MONOTONIC, &mut ts);
