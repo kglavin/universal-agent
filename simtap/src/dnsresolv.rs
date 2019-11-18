@@ -5,7 +5,7 @@
 
 
 use hermes::dns::client::DnsClient; 
-use hermes::dns::protocol::{DnsPacket, DnsRecord, QueryType, ResultCode,TransientTtl};
+use hermes::dns::protocol::{DnsPacket, DnsRecord, QueryType,TransientTtl};
 use hermes::dns::cache::Cache;
 use crate::nat::NatMap;
 use std::net::Ipv4Addr;

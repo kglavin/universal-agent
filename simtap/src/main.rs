@@ -13,7 +13,7 @@ use std::net::Ipv4Addr;
 use dnsresolv::DNSCache;
 
 use hermes::dns::buffer::{BytePacketBuffer};
-use hermes::dns::protocol::{DnsPacket,DnsRecord,QueryType, ResultCode,TransientTtl};
+use hermes::dns::protocol::{DnsRecord,QueryType,TransientTtl};
 
 
 
