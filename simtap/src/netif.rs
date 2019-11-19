@@ -4,6 +4,10 @@ use std::convert::TryInto;
 use std::fs::File;
 use pcap_file::{PcapWriter,PcapHeader,DataLink};
 
+
+const PCAPFILESIZE:u32 = 1024000;
+const PCAPFILERING:u32 = 10;
+
 #[cfg(target_os = "macos")]
 use std::net::UdpSocket;
 
@@ -24,6 +28,7 @@ struct MacosInterface {
 	name: String,
 	pcap_file: PcapWriter<File>,
 	pcap_entry_count: u32,
+	pcap_file_index: u32,
 }
 
 #[cfg(target_os = "linux")]
@@ -32,6 +37,7 @@ struct LinuxInterface {
 	netif: tun_tap::Iface,
 	pcap_file: PcapWriter<File>,
 	pcap_entry_count: u32,
+	pcap_file_index: u32,
 }
 
 #[derive(Debug)]
@@ -45,7 +51,7 @@ pub struct Interface {
 impl Interface {
 #[cfg(target_os = "macos")]
 	pub fn new(intf:(UdpSocket, String)) -> Self {
-		let file_out = File::create("/tmp/simtap.pcap").expect("Error creating file out");
+		let file_out = File::create("/tmp/simtap.0.pcap").expect("Error creating file out");
 		let header = PcapHeader {
 		    magic_number : 0xa1b2c3d4,
 		    version_major : 2,
@@ -61,6 +67,7 @@ impl Interface {
 			name: intf.1,
 			pcap_file: pcap_writer,
 			pcap_entry_count: 0,
+			pcap_file_index: 1,
 		};
 		Interface { 
 			nic: n,
@@ -68,7 +75,7 @@ impl Interface {
 		}
 #[cfg(target_os = "linux")]
 	pub fn new(intf:tun_tap::Iface) -> Self {
-		let file_out = File::create("/tmp/simtap.pcap").expect("Error creating file out");
+		let file_out = File::create("/tmp/simtap.0.pcap").expect("Error creating file out");
 		let header = PcapHeader {
 		    magic_number : 0xa1b2c3d4,
 		    version_major : 2,
@@ -83,6 +90,7 @@ impl Interface {
 			netif: intf,
 			pcap_file: pcap_writer,
 			pcap_entry_count: 0,
+			pcap_file_index: 1,
 		};
 		Interface { 
 			nic: n,
@@ -111,8 +119,9 @@ impl Interface {
 	pub fn pcap_write(&mut self, data: &[u8], len: u32)-> std::io::Result<usize> { 
 		self.nic.pcap_write(&data,len);
 		self.nic.pcap_entry_count += len;
-		if self.nic.pcap_entry_count > 1024000 { 
-			let file_out = File::create("/tmp/simtap.pcap").expect("Error creating file out");
+		if self.nic.pcap_entry_count > PCAPFILESIZE { 
+			let pfile = format!("/tmp/simtap.{}.pcap",self.nic.pcap_file_index);
+			let file_out = File::create(pfile).expect("Error creating file out");
 			let header = PcapHeader {
 			    magic_number : 0xa1b2c3d4,
 			    version_major : 2,
@@ -124,6 +133,11 @@ impl Interface {
 			};
 			self.nic.pcap_file = PcapWriter::with_header(header,file_out).expect("Error writing file");
 			self.nic.pcap_entry_count = 0;
+			if self.nic.pcap_file_index > PCAPFILERING { 
+				self.nic.pcap_file_index = 0;
+			} else { 
+				self.nic.pcap_file_index += 1;
+			}
 			
 		}
 		Ok(len as usize)
