@@ -12,8 +12,8 @@ hermes = { path = "../hermes" }
 [dependencies]
 etherparse = "0.8"
 bitflags = "1.0"
-nix = "0.13"
-lru = "0.3.1"
+nix = "0.20.2"
+lru = "0.7.1"
 hermes = { path = "../hermes" }
 csv = "1.1.1"
 pcap-file = "0.10.0"
